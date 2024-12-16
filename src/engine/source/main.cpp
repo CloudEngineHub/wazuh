@@ -242,6 +242,7 @@ int main(int argc, char* argv[])
                 icConfig.sslOptions.cacert = confManager.get<std::vector<std::string>>(conf::key::INDEXER_SSL_CA_LIST);
                 icConfig.sslOptions.cert = confManager.get<std::string>(conf::key::INDEXER_SSL_CERTIFICATE);
                 icConfig.sslOptions.key = confManager.get<std::string>(conf::key::INDEXER_SSL_KEY);
+                icConfig.sslOptions.key = confManager.get<std::string>(conf::key::MERGED_CA_PATH);
             }
 
             icConfig.databasePath = confManager.get<std::string>(conf::key::INDEXER_DB_PATH);
@@ -570,7 +571,7 @@ int main(int argc, char* argv[])
              *
              * @apiDescription This endpoint receives events to be processed by the Wazuh-Engine security policy. It
              * accepts a NDJSON payload where each line represents an object.
-             * 
+             *
              * **Example NDJSON Payload:**
              * ```
              * {"agent":{"id":"2887e1cf-9bf2-431a-b066-a46860080f56","name":"javier","type":"endpoint","version":"5.0.0","groups":["group1","group2"],"host":{"hostname":"myhost","os":{"name":"Amazon Linux 2","platform":"Linux"},"ip":["192.168.1.2"],"architecture":"x86_64"}}}
