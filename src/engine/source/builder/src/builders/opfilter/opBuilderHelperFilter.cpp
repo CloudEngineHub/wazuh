@@ -1406,4 +1406,110 @@ FilterOp opBuilderHelperMatchKey(const Reference& targetField,
     };
 }
 
+// <field>: +end_with/$<definition_object>|$<object_reference>
+FilterOp opBuilderHelperEndsWith(const Reference& targetField,
+                                 const std::vector<OpArg>& opArgs,
+                                 const std::shared_ptr<const IBuildCtx>& buildCtx)
+{
+    // Assert expected number of parameters
+    utils::assertSize(opArgs, 1);
+
+    if (opArgs[0]->isValue())
+    {
+        if (!std::static_pointer_cast<Value>(opArgs[0])->value().isString())
+        {
+            throw std::runtime_error(fmt::format("Expected 'string' value but got '{}'",
+                                                 std::static_pointer_cast<Value>(opArgs[0])->value().typeName()));
+        }
+    }
+    else
+    {
+        auto ref = std::static_pointer_cast<Reference>(opArgs[0]);
+        const auto& validator = buildCtx->validator();
+        if (validator.hasField(ref->dotPath()))
+        {
+            if (validator.getType(ref->dotPath()) != schemf::Type::KEYWORD
+                && validator.getType(ref->dotPath()) != schemf::Type::TEXT)
+            {
+                throw std::runtime_error(fmt::format("Reference '{}' is of type '{}' but expected 'keyword' or 'text'",
+                                                     ref->dotPath(),
+                                                     schemf::typeToStr(validator.getType(ref->dotPath()))));
+            }
+        }
+    }
+
+    const auto name = buildCtx->context().opName;
+
+    // Tracing
+    const std::string successTrace {fmt::format("[{}] -> Success", name)};
+
+    const std::string failureTrace1 {
+        fmt::format("[{}] -> Failure: Target field '{}' not found", name, targetField.dotPath())};
+    const std::string failureTrace2 {
+        fmt::format("[{}] -> Failure: Target field '{}' is not a string", name, targetField.dotPath())};
+    const std::string failureTrace3 {fmt::format("[{}] -> Failure: Reference not found", name)};
+    const std::string failureTrace4 {fmt::format("[{}] -> Failure: Reference is not an string", name)};
+
+    const std::string failureTrace5 {
+        fmt::format("[{}] -> Failure: String does not end with '{}'", name, targetField.dotPath())};
+
+    // Return op
+    return [failureTrace1,
+            failureTrace2,
+            failureTrace3,
+            failureTrace4,
+            failureTrace5,
+            successTrace,
+            runState = buildCtx->runState(),
+            targetField = targetField.jsonPath(),
+            parameter = opArgs[0]](base::ConstEvent event) -> FilterResult
+    {
+        // Get key
+        if (!event->exists(targetField))
+        {
+            RETURN_FAILURE(runState, false, failureTrace1);
+        }
+
+        auto targetValue = event->getJson(targetField).value();
+        if (!targetValue.isString())
+        {
+            RETURN_FAILURE(runState, false, failureTrace2);
+        }
+
+        auto targetString = targetValue.getString().value();
+        if (parameter->isReference())
+        {
+            auto refPath = std::static_pointer_cast<Reference>(parameter)->jsonPath();
+            if (!event->exists(refPath))
+            {
+                RETURN_FAILURE(runState, false, failureTrace3);
+            }
+
+            auto referenceValue = event->getJson(refPath).value();
+            if (!referenceValue.isString())
+            {
+                RETURN_FAILURE(runState, false, failureTrace4);
+            }
+
+            auto referenceString = referenceValue.getString().value();
+            if (!base::utils::string::endsWith(targetString, referenceString))
+            {
+                RETURN_FAILURE(runState, false, failureTrace5);
+            }
+
+            RETURN_SUCCESS(runState, true, successTrace);
+        }
+        else
+        {
+            auto valueString = std::static_pointer_cast<Value>(parameter)->value().getString().value();
+            if (!base::utils::string::endsWith(targetString, valueString))
+            {
+                RETURN_FAILURE(runState, false, failureTrace5);
+            }
+
+            RETURN_SUCCESS(runState, true, successTrace);
+        }
+    };
+}
+
 } // namespace builder::builders::opfilter
