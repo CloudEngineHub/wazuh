@@ -325,7 +325,7 @@ def sort_array(
             incorrect_fields = ', '.join(sort_by - allowed_sort_fields)
             raise WazuhError(
                 1403,
-                extra_remediation='Allowed sort fields: {0}. ' 'Wrong fields: {1}'.format(
+                extra_remediation='Allowed sort fields: {0}. Wrong fields: {1}'.format(
                     ', '.join(allowed_sort_fields), incorrect_fields
                 ),
             )
