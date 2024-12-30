@@ -141,6 +141,7 @@ add_executable(builder_utest
 
     # Transform Builders
     ${UNIT_SRC_DIR}/builders/optransform/strTransform_test.cpp
+    ${UNIT_SRC_DIR}/builders/optransform/toInt_test.cpp
     ${UNIT_SRC_DIR}/builders/optransform/jsonTransform_test.cpp
     ${UNIT_SRC_DIR}/builders/optransform/array_test.cpp
     ${UNIT_SRC_DIR}/builders/optransform/objectGet_test.cpp

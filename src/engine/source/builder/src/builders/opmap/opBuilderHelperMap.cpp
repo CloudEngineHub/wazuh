@@ -28,6 +28,7 @@ constexpr auto TRACE_SUCCESS = "[{}] -> Success";
 
 constexpr auto TRACE_TARGET_NOT_FOUND = "[{}] -> Failure: Target field '{}' reference not found";
 constexpr auto TRACE_TARGET_TYPE_NOT_STRING = "[{}] -> Failure: Target field '{}' type is not string";
+constexpr auto TRACE_TARGET_TYPE_NOT_INT = "[{}] -> Failure: Target field '{}' type is not integer";
 constexpr auto TRACE_REFERENCE_NOT_FOUND = "[{}] -> Failure: Parameter '{}' reference not found";
 constexpr auto TRACE_REFERENCE_TYPE_IS_NOT = "[{}] -> Failure: Parameter '{}' type is not ";
 
@@ -73,6 +74,30 @@ IntOperator strToOp(const std::string& op)
         return IntOperator::DIV;
     }
     throw std::runtime_error(fmt::format("Operation '{}' not supported", op));
+}
+
+/**
+ * @brief Operators supported by the int helpers.
+ *
+ */
+enum class TruncateOperator
+{
+    TRUNCATE,
+    ROUND
+};
+
+TruncateOperator strToTruncateOp(const std::string& op)
+{
+    if ("truncate" == op)
+    {
+        return TruncateOperator::TRUNCATE;
+    }
+    else if ("round" == op)
+    {
+        return TruncateOperator::ROUND;
+    }
+
+    throw std::runtime_error(fmt::format("Truncate Operation '{}' not supported", op));
 }
 
 /**
@@ -519,6 +544,110 @@ TransformOp opBuilderHelperStringTrim(const Reference& targetField,
         }
 
         event->setString(strToTrim, targetField);
+
+        RETURN_SUCCESS(runState, event, successTrace);
+    };
+}
+
+// field: +to_int/number/option
+TransformOp opBuilderHelperToInt(const Reference& targetField,
+                                 const std::vector<OpArg>& opArgs,
+                                 const std::shared_ptr<const IBuildCtx>& buildCtx)
+{
+    // Assert expected number of parameters
+    builder::builders::utils::assertSize(opArgs, 1, 2);
+
+    // Parameter type check
+    builder::builders::utils::assertRef(opArgs, 0);
+
+    // default operation
+    auto op = TruncateOperator::TRUNCATE;
+
+    if (opArgs.size() > 1)
+    {
+        builder::builders::utils::assertValue(opArgs, 1);
+
+        if (!std::static_pointer_cast<Value>(opArgs[1])->value().isString())
+        {
+            throw std::runtime_error(fmt::format("Expected 'string' parameter but got type '{}'",
+                                                 std::static_pointer_cast<Value>(opArgs[1])->value().typeName()));
+        }
+
+        op = strToTruncateOp(std::static_pointer_cast<Value>(opArgs[1])->value().getString().value());
+    }
+
+    const auto ref = std::static_pointer_cast<Reference>(opArgs[0]);
+    if (buildCtx->validator().hasField(ref->dotPath()))
+    {
+        auto sType = buildCtx->validator().getType(ref->dotPath());
+        if (sType != schemf::Type::FLOAT && sType != schemf::Type::DOUBLE)
+        {
+            throw std::runtime_error(
+                fmt::format("Expected 'float' or 'double' reference but got reference '{}' of type '{}'",
+                            ref->dotPath(),
+                            schemf::typeToStr(sType)));
+        }
+    }
+
+    // Format name for the tracer
+    const auto name = buildCtx->context().opName;
+
+    // Tracing messages
+    const std::string successTrace {fmt::format(TRACE_SUCCESS, name)};
+
+    const std::string failureTrace1 {fmt::format(TRACE_TARGET_NOT_FOUND, name, targetField.dotPath())};
+    const std::string failureTrace2 {fmt::format(TRACE_TARGET_TYPE_NOT_INT, name, targetField.dotPath())};
+    const std::string failureTrace3 {fmt::format(TRACE_REFERENCE_NOT_FOUND, name, ref->dotPath())};
+    const std::string failureTrace4 {
+        fmt::format("{} -> Reference '{}' is not a float or double", name, ref->dotPath())};
+
+    return [failureTrace1,
+            failureTrace2,
+            failureTrace3,
+            failureTrace4,
+            successTrace,
+            op,
+            ref,
+            runState = buildCtx->runState(),
+            targetField = targetField.jsonPath()](base::Event event) -> TransformResult
+    {
+        if (!event->exists(targetField))
+        {
+            RETURN_FAILURE(runState, event, failureTrace1);
+        }
+
+        auto resolvedField {event->getInt64(targetField)};
+
+        // Check if field is a integer
+        if (!resolvedField.has_value())
+        {
+            RETURN_FAILURE(runState, event, failureTrace2);
+        }
+
+        // Get number
+        if (!event->exists(ref->jsonPath()))
+        {
+            RETURN_FAILURE(runState, event, failureTrace3);
+        }
+
+        auto object = event->getJson(ref->jsonPath());
+        if (!object.value().isFloat() && !object.value().isDouble())
+        {
+            RETURN_FAILURE(runState, event, failureTrace4);
+        }
+
+        int64_t result;
+        if (op == TruncateOperator::TRUNCATE)
+        {
+            result = static_cast<int64_t>(object->isFloat() ? object->getFloat().value() : object->getDouble().value());
+        }
+        else
+        {
+            result = static_cast<int64_t>(
+                std::round(object->isFloat() ? object->getFloat().value() : object->getDouble().value()));
+        }
+
+        event->setInt64(result, targetField);
 
         RETURN_SUCCESS(runState, event, successTrace);
     };
