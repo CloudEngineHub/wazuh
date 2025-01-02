@@ -46,10 +46,9 @@ def run(args):
         # Check the args
         args['post_parse'](args)
 
-
         # Create integration configuration
         iconf = IntegrationConf(args['integration_name'], args['format'], args['module'],
-                                args['provider'], args['event_ingested'], args['lines'])
+                                args['provider'], args['event_created'], args['lines'])
 
         # If provider is not `file` then set the log.file.path
         if args['provider'] == "file":
@@ -75,14 +74,20 @@ def configure(subparsers):
     parser.add_argument('-f', '--format', help=f'Format in which events should be handled by engine-test.',
                         choices=Formats.get_formats(), dest='format', required=True)
     parser.add_argument(
-        '-m', '--module', help='Name of the module this data is coming from (i.g. apache-error, apache-access, eventchannel, journald, macos-uls)', dest='module')
+        '-m', '--module',
+        help='Name of the module this data is coming from (i.g. apache-error, apache-access, eventchannel, journald, macos-uls)',
+        dest='module')
     parser.add_argument(
-        '-p', '--provider', help='Name of the provider, source of data (i.g. file, channel name of eventchannel, unit name of journald, program-name of macos-uls, etc)', dest='provider')
+        '-p', '--provider',
+        help='Name of the provider, source of data (i.g. file, channel name of eventchannel, unit name of journald, program-name of macos-uls, etc)',
+        dest='provider')
     parser.add_argument(
-        '-l', '--lines', help='Fixed number of lines for each event. Only for multi-line format.', dest='lines', type=check_positive)
+        '-l', '--lines', help='Fixed number of lines for each event. Only for multi-line format.', dest='lines',
+        type=check_positive)
     parser.add_argument('--log-file-path', help='Path to the log file. Only for file provider.',
                         dest='log_file_path', type=str, default="/var/log/test.log")
-    parser.add_argument('--force-event-ingested', help='Force the event.ingested date to a specific date. Format: YYYY-MM-DDTHH:MM:SSZ',
-                        dest='event_ingested', type=str, default="auto")
+    parser.add_argument('--force-event-created',
+                        help='Force the event.created date to a specific date. Format: YYYY-MM-DDTHH:MM:SSZ',
+                        dest='event_created', type=str, default="auto")
 
     parser.set_defaults(func=run, post_parse=check_args)

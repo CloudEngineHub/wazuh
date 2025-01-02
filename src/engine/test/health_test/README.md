@@ -375,6 +375,41 @@ engine-health-test dynamic -e health_test/environment vvalidate_custom_field_ind
 engine-health-test dynamic -e health_test/environment validate_custom_field_indexing --target decoder --skip windows,wazuh-core
 ```
 
+### Non modifiables fields validate
+Validates non modifiables fields in integrations, decoders or rules If you do not specify a specific target,
+all assets will be validated. However, if you specify the target, only one is accepted
+
+```bash
+usage: engine-health-test dynamic non_modifiables_fields_validate [-h] [--integration INTEGRATION] [--rule_folder RULE_FOLDER]
+                                                                  [--target TARGET] [--skip SKIP]
+
+options:
+  -h, --help            show this help message and exit
+  --integration INTEGRATION
+                        Specify integration name
+  --rule_folder RULE_FOLDER
+                        Specify the name of the rule folder to test
+  --target TARGET       Specify the asset type (decoder or rule). If it is a decoder, the tests are carried out for all decoders. The
+                        same for the rules.
+  --skip SKIP           Skip the tests with the specified name
+
+```
+
+#### Usage
+```bash
+# To run a specific integration
+engine-health-test dynamic -e health_test/environment non_modifiables_fields_validate --integration windows
+# To run a specific rule folder
+engine-health-test dynamic -e health_test/environment non_modifiables_fields_validate --rule_folder windows
+# To run all tests in decoders
+engine-health-test dynamic -e health_test/environment non_modifiables_fields_validate --target decoder
+# To run all tests in rules
+engine-health-test dynamic -e health_test/environment non_modifiables_fields_validate --target rules
+# To skip specific tests in decoders
+engine-health-test dynamic -e health_test/environment non_modifiables_fields_validate --target decoder --skip windows,wazuh-core
+```
+
+
 ### Run
 This tool injects events into the engine and evaluates the output events with an expected event
 ```bash

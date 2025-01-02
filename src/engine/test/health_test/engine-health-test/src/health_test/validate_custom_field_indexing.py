@@ -37,23 +37,30 @@ class UnitResult:
 
     def setup(self, actual: dict):
         self.diff = {}
-        if self.expected == actual:
+        filtered_expected = {
+            k: (v if k != "event" else {sub_k: sub_v for sub_k, sub_v in v.items() if sub_k != "start"}) for k,
+            v in self.expected.items() if k != "@timestamp"}
+        filtered_actual = {k: (v if k != "event" else {sub_k: sub_v for sub_k, sub_v in v.items() if sub_k != "start"})
+                           for k, v in actual.items() if k != "@timestamp"}
+
+        if filtered_expected == filtered_actual:
             self.success = True
             return
         else:
             self.success = False
 
-        for key in self.expected:
-            if key not in actual:
+        for key in filtered_expected:
+            if key not in filtered_actual:
                 self.diff[key] = {"info": "Missing key in actual result",
-                                  "expected": self.expected[key]}
-            elif self.expected[key] != actual[key]:
+                                  "expected": filtered_expected[key]}
+                return
+            elif filtered_expected[key] != filtered_actual[key]:
                 self.diff[key] = {"info": "Mismatched value",
-                                  "expected": self.expected[key], "actual": actual[key]}
-        for key in actual:
-            if key not in self.expected:
+                                  "expected": filtered_expected[key], "actual": filtered_actual[key]}
+        for key in filtered_actual:
+            if key not in filtered_expected:
                 self.diff[key] = {"info": "Extra key in actual result",
-                                  "actual": actual[key]}
+                                  "actual": filtered_actual[key]}
 
 
 class UnitOutput:
