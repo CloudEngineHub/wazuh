@@ -51,7 +51,7 @@ TEST_F(RocksDBSafeQueuePrefixTest, PopWithData)
     auto front {queue->front()};
     EXPECT_NO_THROW(queue->pop(front.second));
     EXPECT_EQ(0, queue->size("000"));
-    EXPECT_STREQ("000", front.second.c_str());
+    EXPECT_STREQ("0000000000", front.second.c_str());
     EXPECT_STREQ("test", front.first.c_str());
 
     EXPECT_ANY_THROW(queue->pop("000"));
@@ -61,7 +61,7 @@ TEST_F(RocksDBSafeQueuePrefixTest, PopWithData)
     front = queue->front();
     EXPECT_NO_THROW(queue->pop(front.second));
     EXPECT_EQ(0, queue->size("000"));
-    EXPECT_STREQ("000", front.second.c_str());
+    EXPECT_STREQ("0000000000", front.second.c_str());
     EXPECT_STREQ("test2", front.first.c_str());
 
     queue->cancel();
@@ -206,8 +206,8 @@ TEST_F(RocksDBSafeQueuePrefixTest, PopWithDeletedIndex)
     queue = nullptr;
     {
         auto db = std::make_unique<Utils::RocksDBWrapper>("test.db");
-        db->delete_("001_" + std::to_string(3));
-        db->delete_("001_" + std::to_string(8));
+        db->delete_("0000000001_" + Utils::padString(std::to_string(3), '0', 10));
+        db->delete_("0000000001_" + Utils::padString(std::to_string(8), '0', 10));
     }
     queue = std::make_unique<Utils::TSafeMultiQueue<std::string, std::string, RocksDBQueueCF<std::string>>>(
         RocksDBQueueCF<std::string>("test.db"));
