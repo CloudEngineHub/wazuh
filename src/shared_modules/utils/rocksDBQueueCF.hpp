@@ -23,6 +23,10 @@
 #include <stdexcept>
 #include <string>
 
+constexpr auto ROCKSDB_CF_ID_PADDING {10};
+constexpr auto ROCKSDB_CF_NUMBER_PADDING {10};
+constexpr auto ROCKSDB_CF_DELIMITER {'_'};
+
 // RocksDB integration as queue
 template<typename T, typename U = T>
 class RocksDBQueueCF final
@@ -38,11 +42,51 @@ private:
         std::chrono::time_point<std::chrono::system_clock> postponeTime;
     };
 
+    std::string paddedKey(std::string_view id, uint64_t number) const
+    {
+        return Utils::padString(std::string(id), '0', ROCKSDB_CF_ID_PADDING) + ROCKSDB_CF_DELIMITER +
+               Utils::padString(std::to_string(number), '0', ROCKSDB_CF_NUMBER_PADDING);
+    }
+
+    std::string paddedKey(std::string_view id, const std::string& numberString) const
+    {
+        return Utils::padString(std::string(id), '0', ROCKSDB_CF_ID_PADDING) + ROCKSDB_CF_DELIMITER +
+               Utils::padString(numberString, '0', ROCKSDB_CF_NUMBER_PADDING);
+    }
+
+    std::string paddedId(std::string_view id) const
+    {
+        return Utils::padString(std::string(id), '0', ROCKSDB_CF_ID_PADDING);
+    }
+
     enum KeyFields : size_t
     {
         ID_QUEUE = 0,
         QUEUE_NUMBER = 1
     };
+
+    void keyNormalization(const std::string& numberString,
+                          std::string_view keyString,
+                          const std::string& id,
+                          const std::unique_ptr<rocksdb::Iterator>& it)
+    {
+        if (keyString.size() < ROCKSDB_CF_ID_PADDING + 1 + ROCKSDB_CF_NUMBER_PADDING)
+        {
+            auto stringPaddedKey = paddedKey(id, numberString);
+
+            if (const auto status =
+                    m_db->Put(rocksdb::WriteOptions(), stringPaddedKey, {it->value().data(), it->value().size()});
+                !status.ok())
+            {
+                throw std::runtime_error("Failed to re-insert element during key normalization: " + stringPaddedKey);
+            }
+
+            if (const auto status = m_db->Delete(rocksdb::WriteOptions(), keyString); !status.ok())
+            {
+                throw std::runtime_error("Failed to remove element during key normalization: " + stringPaddedKey);
+            }
+        }
+    }
 
     void initializeQueueData()
     {
@@ -51,17 +95,22 @@ private:
         while (it->Valid())
         {
             // Split key to get the ID and queue number.
-            const auto data = Utils::split(it->key().ToString(), '_');
+            const auto dataString = it->key().ToString();
+            const auto data = Utils::split(dataString, ROCKSDB_CF_DELIMITER);
             const auto& id = data.at(KeyFields::ID_QUEUE);
-            const auto queueNumber = std::stoull(data.at(KeyFields::QUEUE_NUMBER));
+            const auto& queueNumberString = data.at(KeyFields::QUEUE_NUMBER);
+            const auto queueNumber = std::stoull(queueNumberString);
 
-            if (m_queueMetadata.find(id.data()) == m_queueMetadata.end())
+            keyNormalization(queueNumberString, dataString, id, it);
+            auto paddedIdString = paddedId(id);
+
+            if (m_queueMetadata.find(paddedIdString) == m_queueMetadata.end())
             {
-                m_queueMetadata.emplace(id,
+                m_queueMetadata.emplace(paddedIdString,
                                         QueueMetadata {queueNumber, queueNumber, 0, std::chrono::system_clock::now()});
             }
 
-            auto& element = m_queueMetadata[id];
+            auto& element = m_queueMetadata[paddedIdString];
 
             if (queueNumber > element.tail)
             {
@@ -137,17 +186,17 @@ public:
 
     void push(std::string_view id, const T& data)
     {
-        if (m_queueMetadata.find(id.data()) == m_queueMetadata.end())
+        auto paddedIdString = paddedId(id);
+        if (m_queueMetadata.find(paddedIdString) == m_queueMetadata.end())
         {
-            m_queueMetadata.emplace(id, QueueMetadata {1, 0, 0, std::chrono::system_clock::now()});
+            m_queueMetadata.emplace(paddedIdString, QueueMetadata {1, 0, 0, std::chrono::system_clock::now()});
         }
 
-        if (const auto it {m_queueMetadata.find(id.data())}; it != m_queueMetadata.end())
+        if (const auto it {m_queueMetadata.find(paddedIdString)}; it != m_queueMetadata.end())
         {
             // Try to enqueue element with a RValue reference, if it fails, throw an exception but dont change the tail
             // to avoid data inconsistency.
-            if (const auto status = m_db->Put(
-                    rocksdb::WriteOptions(), std::string(id) + "_" + std::to_string(it->second.tail + 1), data);
+            if (const auto status = m_db->Put(rocksdb::WriteOptions(), paddedKey(id, it->second.tail + 1), data);
                 !status.ok())
             {
                 throw std::runtime_error("Failed to enqueue element");
@@ -159,7 +208,8 @@ public:
 
     void pop(std::string_view id)
     {
-        if (const auto it {m_queueMetadata.find(id.data())}; it != m_queueMetadata.end())
+        auto paddedIdString = paddedId(id);
+        if (const auto it {m_queueMetadata.find(paddedIdString)}; it != m_queueMetadata.end())
         {
             // If the queue is empty, nothing to do.
             if (it->second.size == 0)
@@ -170,10 +220,9 @@ public:
             std::string value;
             auto index = it->second.head;
 
-            while (index <= it->second.tail && !m_db->KeyMayExist(rocksdb::ReadOptions(),
-                                                                  m_db->DefaultColumnFamily(),
-                                                                  std::string(id) + "_" + std::to_string(index),
-                                                                  &value))
+            while (
+                index <= it->second.tail &&
+                !m_db->KeyMayExist(rocksdb::ReadOptions(), m_db->DefaultColumnFamily(), paddedKey(id, index), &value))
             {
                 // If the key does not exist, it means that the queue is not continuous.
                 // This incremental is only for the head, because this is a part of recovery algorithm when the
@@ -188,9 +237,7 @@ public:
             }
 
             // RocksDB dequeue element.
-            if (const auto status =
-                    m_db->Delete(rocksdb::WriteOptions(), std::string(id) + "_" + std::to_string(index));
-                !status.ok())
+            if (const auto status = m_db->Delete(rocksdb::WriteOptions(), paddedKey(id, index)); !status.ok())
             {
                 throw std::runtime_error("Failed to dequeue element: " + index);
             }
@@ -213,7 +260,8 @@ public:
 
     uint64_t size(std::string_view id) const
     {
-        if (const auto it = m_queueMetadata.find(id.data()); it != m_queueMetadata.end())
+        auto paddedIdString = paddedId(id);
+        if (const auto it = m_queueMetadata.find(paddedIdString); it != m_queueMetadata.end())
         {
             return it->second.size;
         }
@@ -256,7 +304,8 @@ public:
 
     void postpone(std::string_view id, const std::chrono::seconds& time) noexcept
     {
-        if (const auto it {m_queueMetadata.find(id.data())}; it != m_queueMetadata.end())
+        auto paddedIdString = paddedId(id);
+        if (const auto it {m_queueMetadata.find(paddedIdString)}; it != m_queueMetadata.end())
         {
             it->second.postponeTime = std::chrono::system_clock::now() + time;
         }
@@ -265,8 +314,9 @@ public:
     U front(std::string_view id)
     {
         U value;
+        auto paddedIdString = paddedId(id);
 
-        if (const auto it {m_queueMetadata.find(id.data())}; it != m_queueMetadata.end())
+        if (const auto it {m_queueMetadata.find(paddedIdString)}; it != m_queueMetadata.end())
         {
             // If the queue is empty, return an empty value.
             if (it->second.size == 0)
@@ -279,10 +329,8 @@ public:
 
             while (index <= it->second.tail)
             {
-                if (const auto status = m_db->Get(rocksdb::ReadOptions(),
-                                                  m_db->DefaultColumnFamily(),
-                                                  std::string(id) + "_" + std::to_string(index),
-                                                  &value);
+                if (const auto status =
+                        m_db->Get(rocksdb::ReadOptions(), m_db->DefaultColumnFamily(), paddedKey(id, index), &value);
                     status.ok())
                 {
                     break;
@@ -307,6 +355,7 @@ public:
 
     void clear(std::string_view id)
     {
+        auto paddedIdString = paddedId(id);
         auto deleteElement = [this](const std::string& key)
         {
             if (!m_db->Delete(rocksdb::WriteOptions(), key).ok())
@@ -322,19 +371,19 @@ public:
             {
                 for (auto i = metadata.second.head; i <= metadata.second.tail; ++i)
                 {
-                    deleteElement(std::string(metadata.first) + "_" + std::to_string(i));
+                    deleteElement(paddedKey(std::string(metadata.first), i));
                 }
             }
             m_queueMetadata.clear();
         }
         else
         {
-            if (const auto it {m_queueMetadata.find(id.data())}; it != m_queueMetadata.end())
+            if (const auto it {m_queueMetadata.find(paddedIdString)}; it != m_queueMetadata.end())
             {
                 // Clear all elements from the queue.
                 for (auto i = it->second.head; i <= it->second.tail; ++i)
                 {
-                    deleteElement(std::string(id) + "_" + std::to_string(i));
+                    deleteElement(paddedKey(id, i));
                     ++it->second.head;
                     --it->second.size;
                 }
