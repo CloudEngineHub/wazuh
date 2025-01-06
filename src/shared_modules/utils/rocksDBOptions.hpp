@@ -19,11 +19,12 @@
 namespace Utils
 {
     constexpr auto ROCKSDB_WRITE_BUFFER_SIZE = 32 * 1024 * 1024;
-    constexpr auto ROCKSDB_WRITE_BUFFER_MANAGER_SIZE = 32 * 1024 * 1024;
-    constexpr auto ROCKSDB_MAX_WRITE_BUFFER_NUMBER = 2;
+    constexpr auto ROCKSDB_WRITE_BUFFER_MANAGER_SIZE = 128 * 1024 * 1024;
+    constexpr auto ROCKSDB_MAX_WRITE_BUFFER_NUMBER = 4;
     constexpr auto ROCKSDB_MAX_OPEN_FILES = 256;
     constexpr auto ROCKSDB_NUM_LEVELS = 4;
     constexpr auto ROCKSDB_BLOCK_CACHE_SIZE = 16 * 1024 * 1024;
+    constexpr auto ROCKSDB_MAX_BACKGROUND_JOBS = 4;
 
     class RocksDBOptions final
     {
@@ -101,6 +102,8 @@ namespace Utils
             options.write_buffer_size = ROCKSDB_WRITE_BUFFER_SIZE;
             // The maximum number of write buffers that are built up in memory.
             options.max_write_buffer_number = ROCKSDB_MAX_WRITE_BUFFER_NUMBER;
+            // The maximum number of background jobs to allow.
+            options.max_background_jobs = ROCKSDB_MAX_BACKGROUND_JOBS;
 
             // The size of the LRU cache used to prevent cold reads.
             options.table_factory.reset(NewBlockBasedTableFactory(buildTableOptions(readCache)));
