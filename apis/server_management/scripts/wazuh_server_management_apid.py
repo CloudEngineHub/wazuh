@@ -39,16 +39,15 @@ from server_management_api.uri_parser import APIUriParser
 from starlette.middleware.cors import CORSMiddleware
 from wazuh.core import common, pyDaemonModule, utils
 from wazuh.core.authentication import load_jwt_keys
-from wazuh.core.cluster.utils import print_version
 from wazuh.core.commands_manager import CommandsManager
 from wazuh.core.common import WAZUH_SERVER_YML
 from wazuh.core.config.client import CentralizedConfig
 from wazuh.core.config.models.central_config import ManagementAPIConfig
 from wazuh.core.config.models.ssl_config import APISSLConfig
 from wazuh.core.rbac import RBACManager
+from wazuh.core.server.utils import print_version
 from wazuh.core.unix_server.commands import post_commands
 from wazuh.core.unix_server.server import HTTPUnixServer
-from wazuh.rbac.orm import check_database_integrity
 
 SSL_DEPRECATED_MESSAGE = 'The `{ssl_protocol}` SSL protocol is deprecated.'
 CACHE_DELETED_MESSAGE = (
@@ -183,11 +182,6 @@ def start(params: dict, config: ManagementAPIConfig):
     config : ManagementAPIConfig
         API Configuration.
     """
-    try:
-        check_database_integrity()
-    except Exception as db_integrity_exc:
-        raise APIError(2012, details=str(db_integrity_exc)) from db_integrity_exc
-
     # Spawn child processes with their own needed imports
     if 'thread_pool' not in common.mp_pools.get():
         loop = asyncio.get_event_loop()
