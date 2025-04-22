@@ -38,7 +38,6 @@ from server_management_api.signals import lifespan_handler
 from server_management_api.uri_parser import APIUriParser
 from starlette.middleware.cors import CORSMiddleware
 from wazuh.core import common, pyDaemonModule, utils
-from wazuh.core.authentication import load_jwt_keys
 from wazuh.core.commands_manager import CommandsManager
 from wazuh.core.common import WAZUH_SERVER_YML
 from wazuh.core.config.client import CentralizedConfig
@@ -68,14 +67,6 @@ def spawn_process_pool():
     """Spawn general process pool child."""
     exec_pid = os.getpid()
     pyDaemonModule.create_pid(API_LOCAL_REQUEST_PROCESS, exec_pid)
-
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
-
-
-def spawn_events_pool():
-    """Spawn events process pool child."""
-    events_pid = os.getpid()
-    pyDaemonModule.create_pid(API_SECURITY_EVENTS_PROCESS, events_pid)
 
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
@@ -328,7 +319,6 @@ if __name__ == '__main__':
     logger = logging.getLogger('wazuh-api')
 
     configure_ssl(uvicorn_params, management_config.ssl)
-    load_jwt_keys(management_config)
 
     # Check for unused PID files
     utils.clean_pid_files(API_MAIN_PROCESS)
